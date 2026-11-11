@@ -1025,24 +1025,24 @@ function saveLocal(name, s) {
 }
 async function fetchBoard() {
   if (!LEADERBOARD_URL) return { rows: localBoard(), online: false };
-  try { const r = await fetch(LEADERBOARD_URL + "?t=" + Date.now()); const j = await r.json(); return { rows: j.slice(0, 20), online: true }; }
+  try { const r = await fetch(LEADERBOARD_URL + "?t=" + Date.now()); const j = await r.json(); if (!r.ok || !Array.isArray(j)) throw new Error('Classifica non disponibile'); return { rows: j, online: true }; }
   catch (e) { return { rows: localBoard(), online: false }; }
 }
 async function sendScore(name, s) {
   saveLocal(name, s);
-  if (!LEADERBOARD_URL || s < 1) return;
+  if (!LEADERBOARD_URL) return;
   try { await fetch(LEADERBOARD_URL, { method: "POST", mode: "no-cors", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify({ name, score: s }) }); } catch (e) {}
 }
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 function renderBoard(target, data) {
-  const rows = data.rows.slice(0, 10), medal = ["🥇", "🥈", "🥉"];
-  let h = `<div style="font-weight:800;margin-top:6px">🏆 Classifica ${data.online ? "" : "(solo su questo telefono)"}</div><table>`;
+  const rows = data.rows, medal = ["🥇", "🥈", "🥉"];
+  let h = `<div style="font-weight:800;margin-top:6px">🏆 Classifica ${data.online ? "" : "(solo su questo telefono)"}</div><div style="width:100%;max-height:220px;overflow:auto"><table>`;
   if (!rows.length) h += `<tr><td>Ancora nessun punteggio: sii il primo!</td></tr>`;
   rows.forEach((r, i) => {
     const me = r.name.toLowerCase() === playerName.toLowerCase();
     h += `<tr><td class="${me ? "me" : ""}">${medal[i] || (i + 1) + "."} ${esc(r.name)}</td><td class="${me ? "me" : ""}">${Number(r.score)}</td></tr>`;
   });
-  target.innerHTML = h + "</table>";
+  target.innerHTML = h + "</table></div>";
 }
 
 // ================= SCHERMATE =================
