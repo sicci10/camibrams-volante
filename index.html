@@ -1023,20 +1023,31 @@ function saveLocal(name, s) {
   if (i >= 0) { if (s > b[i].score) b[i].score = s; } else b.push({ name, score: s });
   b.sort((a, z) => z.score - a.score); store.set("cami_board", JSON.stringify(b.slice(0, 20)));
 }
+let sharedRows = null;
+let boardRevision = 0;
+
+function previewBoard(name, points) {
+  if (!sharedRows) return localBoard();
+  const key = value => value.normalize("NFKC").toLowerCase();
+  const rows = sharedRows.filter(row => key(row.name) !== key(name));
+  const previous = sharedRows.find(row => key(row.name) === key(name));
+  rows.push({ name: previous?.name ?? name, score: Math.max(previous?.score ?? 0, points) });
+  return rows.sort((a, b) => b.score - a.score || a.name.localeCompare(b.name, "it"));
+}
+
 async function fetchBoard() {
   if (!LEADERBOARD_URL) return { rows: localBoard(), online: false };
   try { const r = await fetch(LEADERBOARD_URL + "?t=" + Date.now()); const j = await r.json(); if (!r.ok || !Array.isArray(j)) throw new Error('Classifica non disponibile'); return { rows: j, online: true }; }
   catch (e) { return { rows: localBoard(), online: false }; }
 }
 async function sendScore(name, s) {
-  saveLocal(name, s);
   if (!LEADERBOARD_URL) return;
   try { await fetch(LEADERBOARD_URL, { method: "POST", mode: "no-cors", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify({ name, score: s }) }); } catch (e) {}
 }
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 function renderBoard(target, data) {
   const rows = data.rows, medal = ["🥇", "🥈", "🥉"];
-  let h = `<div style="font-weight:800;margin-top:6px">🏆 Classifica ${data.online ? "" : "(solo su questo telefono)"}</div><div style="width:100%;max-height:220px;overflow:auto"><table>`;
+  let h = `<div style="font-weight:800;margin-top:6px">🏆 Classifica</div>${data.status ? `<small role="status">${data.status}</small>` : ""}<div style="width:100%;max-height:220px;overflow:auto"><table>`;
   if (!rows.length) h += `<tr><td>Ancora nessun punteggio: sii il primo!</td></tr>`;
   rows.forEach((r, i) => {
     const me = r.name.toLowerCase() === playerName.toLowerCase();
@@ -1076,11 +1087,23 @@ async function showOver() {
   el("record").textContent = score >= best && score > 0 ? "Nuovo record personale! 🎉" : "Il tuo record: " + best;
   el("earn").textContent = `+${lastEarn} monete 🪙 (ne hai ${wallet}) · spendile nel guardaroba di Brams!`;
   el("battuta").textContent = battutaFor(score);
-  el("boardOver").innerHTML = "";
+  const target = el("boardOver");
+  const revision = ++boardRevision;
+  const name = playerName, points = score;
+  saveLocal(name, points);
+  renderBoard(target, { rows: previewBoard(name, points), status: "Aggiornamento…" });
   el("ibanbox").style.display = "none"; renderGift();
   $over.classList.add("on");
-  await sendScore(playerName, score);
-  renderBoard(el("boardOver"), await fetchBoard());
+  await sendScore(name, points);
+  const data = await fetchBoard();
+  if (revision !== boardRevision) return;
+  if (data.online) {
+    sharedRows = data.rows;
+    renderBoard(el("boardStart"), data);
+  }
+  renderBoard(target, data.online ? data : {
+    rows: previewBoard(name, points), status: "Classifica online non disponibile"
+  });
 }
 function begin() {
   const n = $nome.value.trim();
@@ -1151,8 +1174,14 @@ window.addEventListener("keydown", e => {
 reset();
 drawHero();
 if (document.fonts && document.fonts.ready) document.fonts.ready.then(drawHero);
-renderBoard(el("boardStart"), { rows: localBoard(), online: false });
-fetchBoard().then(d => renderBoard(el("boardStart"), d));
+renderBoard(el("boardStart"), { rows: localBoard(), status: "Aggiornamento…" });
+fetchBoard().then(data => {
+  if (boardRevision !== 0) return;
+  if (data.online) sharedRows = data.rows;
+  renderBoard(el("boardStart"), data.online ? data : {
+    rows: data.rows, status: "Classifica online non disponibile"
+  });
+});
 requestAnimationFrame(loop);
 </script>
 </body>
